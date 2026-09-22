@@ -5,7 +5,7 @@ Turn any phone into a motion controller for your Python program. The phone strea
 ## Try the demo
 
 ```sh
-pip install "pocketwand[demo] @ git+https://github.com/agasthyako/Pocket-Wand"
+pip install "pocketwand[demo]"
 pocketwand demo
 ```
 
