@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>PocketWand Controller</title>
+<style>
+  :root { --bg: #0e1116; --fg: #e8edf3; --dim: #8a96a6; --accent: #4cc9f0; --hot: #f72585; }
+  * { box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 16px/1.4 -apple-system, system-ui, sans-serif; touch-action: none; overflow: hidden; }
+  body { display: flex; flex-direction: column; padding: 16px; gap: 12px; }
+  #status { font-size: 14px; color: var(--dim); display: flex; justify-content: space-between; }
+  #status b { color: var(--fg); }
+  .screen { flex: 1; display: none; flex-direction: column; gap: 12px; }
+  .screen.on { display: flex; }
+  button { font: inherit; border: 0; border-radius: 16px; color: var(--bg); background: var(--accent); padding: 18px; }
+  #start button { margin: auto 0; font-size: 22px; padding: 28px; }
+  #trigger { flex: 1; background: #1c2230; color: var(--fg); font-size: 22px; }
+  #trigger.down { background: var(--hot); }
+  #recentre { background: #2b3446; color: var(--fg); }
+  #angles { font: 13px ui-monospace, monospace; color: var(--dim); text-align: center; }
+  #msg { color: var(--dim); text-align: center; margin: auto 0; }
+</style>
+</head>
+<body>
+<div id="status"><span id="conn">Not connected</span><span id="slot"></span></div>
+
+<div id="start" class="screen on">
+  <p id="msg">Tap below, then allow motion access.</p>
+  <button id="enable">Enable motion</button>
+</div>
+
+<div id="pad" class="screen">
+  <button id="trigger">Hold</button>
+  <div id="angles"></div>
+  <button id="recentre">Recentre (point at your screen)</button>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const room = new URLSearchParams(location.search).get("room");
+
+// A stable random id lets this phone reclaim its Slot after reconnecting.
+let id;
+try { id = localStorage.getItem("pocketwand-id"); } catch {}
+if (!id) {
+  id = Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try { localStorage.setItem("pocketwand-id", id); } catch {}
+}
+
+const state = { a: null, b: null, g: null, p: 0 };
+let ws = null, failures = 0, lastSent = "", lastSentAt = 0;
+
+if (!room) {
+  $("msg").textContent = "Open this page by scanning the QR code shown by the game.";
+  $("enable").style.display = "none";
+}
+
+$("enable").onclick = async () => {
+  // iOS only hands out sensor data after this permission call, made directly from a tap.
+  if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+    try {
+      if (await DeviceOrientationEvent.requestPermission() !== "granted") {
+        $("msg").textContent = "Motion access was denied. Close this tab, reopen the link and tap Allow.";
+        return;
+      }
+    } catch (e) {
+      $("msg").textContent = "Couldn't ask for motion access: " + e.message;
+      return;
+    }
+  }
+  window.addEventListener("deviceorientation", (e) => { state.a = e.alpha; state.b = e.beta; state.g = e.gamma; });
+  $("start").classList.remove("on");
+  $("pad").classList.add("on");
+  keepAwake();
+  connect();
+  requestAnimationFrame(send);
+  setTimeout(() => {
+    if (state.b === null) $("angles").textContent = "No motion data. This browser or device may not have motion sensors.";
+  }, 2000);
+};
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  ws = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(room)}&id=${encodeURIComponent(id)}`);
+  $("conn").textContent = "Connecting…";
+  ws.onopen = () => { failures = 0; $("conn").innerHTML = "<b>Connected</b>"; };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === "slot") $("slot").textContent = "Slot " + m.slot;
+  };
+  ws.onclose = () => {
+    failures++;
+    $("conn").textContent = failures > 5 ? "Can't reach the game. The link may be old; scan the new QR code." : "Reconnecting…";
+    setTimeout(connect, Math.min(1000 * failures, 5000));
+  };
+}
+
+function send() {
+  requestAnimationFrame(send);
+  if (!ws || ws.readyState !== WebSocket.OPEN || state.b === null) return;
+  // Drop frames rather than queue them: stale orientation is worse than missing orientation.
+  if (ws.bufferedAmount > 1024) return;
+  const msg = JSON.stringify(state);
+  const now = performance.now();
+  if (msg === lastSent && now - lastSentAt < 250) return;
+  ws.send(msg);
+  lastSent = msg; lastSentAt = now;
+  $("angles").textContent = `α ${state.a?.toFixed(0)}  β ${state.b?.toFixed(0)}  γ ${state.g?.toFixed(0)}`;
+}
+
+const trigger = $("trigger");
+const press = (down) => (e) => { e.preventDefault(); state.p = down ? 1 : 0; trigger.classList.toggle("down", down); };
+trigger.addEventListener("pointerdown", press(true));
+trigger.addEventListener("pointerup", press(false));
+trigger.addEventListener("pointercancel", press(false));
+trigger.addEventListener("pointerleave", press(false));
+
+$("recentre").onclick = () => { if (ws && ws.readyState === WebSocket.OPEN) ws.send('{"t":"recentre"}'); };
+
+let wakeLock = null;
+async function keepAwake() {
+  try { wakeLock = await navigator.wakeLock?.request("screen"); } catch {}
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") keepAwake(); });
+</script>
+</body>
+</html>
