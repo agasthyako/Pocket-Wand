@@ -12,7 +12,12 @@ def main() -> None:
     args = parser.parse_args()
 
     if args.command == "demo":
-        from .demo import run
+        try:
+            from .demo import run
+        except ModuleNotFoundError as e:
+            if e.name != "pygame":
+                raise
+            raise SystemExit('The demo needs pygame. Install it with:  pip install "pocketwand[demo]"')
         run(tunnel=not args.local)
     else:
         _print(tunnel=not args.local)

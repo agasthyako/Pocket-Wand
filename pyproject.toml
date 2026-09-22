@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pocketwand"
-version = "0.1.2"
+version = "0.1.3"
 description = "Turn any phone into a motion controller, streamed through the browser."
 readme = "README.md"
 license = "MIT"
