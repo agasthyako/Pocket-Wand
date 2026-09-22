@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,12 +7,17 @@ name = "pocketwand"
 version = "0.1.0"
 description = "Turn any phone into a motion controller, streamed through the browser."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.9",
     "pycloudflared>=0.2",
     "qrcode>=7.4",
 ]
+
+[project.urls]
+Homepage = "https://github.com/agasthyako/Pocket-Wand"
 
 [project.optional-dependencies]
 demo = ["pygame-ce>=2.4"]
